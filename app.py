@@ -1,4 +1,5 @@
 # C:\Program Files\PostgreSQL\15\bin> "raster2pgsql.exe" -s 4326 -N 0 -t 2700x2700 -I -C -M -d C:\Users\tl_59\Downloads\31T_20220101-20230101_4326.tif rasters.esri_lcover_2022 |  "psql.exe" -d postgres -h localhost -U postgres -p 5432 -W
+# curl -X POST -H "Content-Type: application/json" -d "{\"minx\": 1.3359375, \"miny\": 43.512335, \"maxx\": 1.532135, \"maxy\": 43.697165}" http://127.0.0.1:5000/get_zonal_stats
 from flask import Flask, request, jsonify
 import psycopg2
 from psycopg2.extras import DictCursor
