@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8' />
+  <title>Mapbox Draw</title>
+  <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" rel="stylesheet">
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" type="text/css">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://code.highcharts.com/modules/exporting.js"></script>
+  <script src="https://code.highcharts.com/modules/export-data.js"></script>
+  
+  <style>
+    body { margin: 0; padding: 0;overflow: hidden;  }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+  </style>
+  <style>
+    .calculation-box {
+    width: 20vw;
+    position: absolute;
+    top: 40px;
+    left: 10px;
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 15px;
+    text-align: center;
+    }
+     
+    p {
+    font-family: 'Open Sans';
+    margin: 0;
+    font-size: 13px;
+    }
+    .loader {
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+    display: none; /* Hide the loader initially */
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+    </style>
+</head>
+<body >
+  <div id="map" style="height: 70%; top: 0%;"></div>
+
+  <div id="footer" style="height: 30%; position: absolute; bottom: 0; left: 0; right: 0; background-color: #f0f0f0; padding: 2px; text-align: center; display: flex;">
+  
+    <div id="tot_surf" style="width: 30%; background-color: lightblue ; text-align: center;">
+      <!-- Content for surf_tot -->
+      <div id="calculated-area"></div>
+    </div>
+    <div id="chartCont" style="flex-grow: 1; max-height: 100%; background-color: lightgreen; overflow: hidden; position: relative;">
+      <div id="loader" class="loader"></div> <!-- Loader element -->
+      <div id="chart" style="height: 100%;"></div>
+    </div>
+  </div>
+  
+  
+  <script>
+    mapboxgl.accessToken = 'pk.eyJ1IjoidGxlY2FlIiwiYSI6ImNreHJqOGFwaTAzN3Ayd281dTBmb3VzYTYifQ.8fwOWabWWbcfcUxi1rIxAQ'; // Replace with your Mapbox access token
+
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/streets-v11',
+      center: [1.5, 43.5], // Initial map center
+      zoom: 9 // Initial map zoom
+    });
+
+    map.on('load', () => {
+      const draw = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: {
+          polygon: true,
+          trash: true
+        }
+      });
+      map.addControl(draw);
+
+      map.on('draw.create', updateArea);
+      map.on('draw.delete', updateArea);
+      map.on('draw.update', updateArea);
+
+      function updateArea() {
+  const data = draw.getAll();
+  if (data.features.length > 0) {
+    const statsBody = document.getElementById('chart');
+    statsBody.innerHTML = ''; // Clear previous data
+    loader.style.display = 'block';
+
+    const requestBody = {
+      features: data.features  // Pass the GeoJSON features directly
+    };
+
+    fetch('http://127.0.0.1:5000/get_zonal_stats', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log('Zonal statistics:', data.zonal_statistics);
+        updateHighcharts(data);
+      })
+      .catch(error => {
+        console.error('Error fetching data:', error);
+      })
+      .finally(() => {
+        // Hide the loader when the request is completed (whether success or error)
+        loader.style.display = 'none';
+      });
+      const answer = document.getElementById('calculated-area');
+      // and also compute the polygon surface 
+      if (data.features.length > 0) {
+        let area = turf.area(data);
+        area = area / 10000
+        // Restrict the area to 2 decimal points.
+        const rounded_area = Math.round(area * 100) / 100;
+        
+        answer.innerHTML = `<p><strong>${rounded_area}</strong></p><p>ha</p>`;
+      } else {
+        answer.innerHTML = '';
+        if (e.type !== 'draw.delete')
+         alert('Click the map to draw a polygon.');
+        }
+  }
+}
+
+    });
+    function updateHighcharts(data) {
+  if (!data || !Array.isArray(data.zonal_statistics)) {
+    console.error('Invalid data format:', data);
+    return;
+  }
+
+  // Extracting values from the API response
+  const categories = data.zonal_statistics.map(entry => entry.value);
+  const seriesData = data.zonal_statistics.map(entry => entry.count);
+
+  // Assuming your Highcharts chart is already initialized with an ID 'chart'
+  Highcharts.chart('chart', {
+    credits: { enabled: false },
+    legend: {enabled : false},
+    chart: {
+      backgroundColor:'transparent',
+      type: 'column',
+    },
+    title: {
+      text: 'Repartition de l\'OCS',
+    },
+    xAxis: {
+      categories: categories,
+      title: {
+        text: 'Classes d\'OCS',
+      },
+    },
+    yAxis: {
+      title: {
+        text: 'Surfaces en ha',
+      },
+    },
+    series: [{
+      name: 'Count',
+      data: seriesData,
+    }],
+  });
+}
+  </script>
+</body>
+</html>
